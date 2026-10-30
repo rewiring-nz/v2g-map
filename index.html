@@ -175,6 +175,8 @@ button { font: inherit; color: inherit; }
 }
 a.outline-btn { display: block; box-sizing: border-box; text-align: center; text-decoration: none; color: var(--accent); border-style: solid; border-color: var(--accent); cursor: pointer; }
 .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.article { white-space: pre-wrap; overflow-wrap: anywhere; }
+.photo { display: block; max-width: 100%; border-radius: 10px; margin-bottom: 12px; }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
 
 @media (max-width: 760px) {
@@ -228,11 +230,12 @@ a.outline-btn { display: block; box-sizing: border-box; text-align: center; text
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script>
 // ---------- SETTINGS ----------
-// Paste the Google Sheets "Publish to web" CSV link of the Entries tab here.
+// Paste the Google Sheets "Publish to web" CSV link of the entries tab here.
 // Leave it empty to show the sample data below.
 const CONFIG = {
-  sheetCsvUrl: "",
+  sheetCsvUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT4zcD9D8YXb0JmIVIrAftPKUtIlrgq0J-vZCbMm35g5RTdaM2Udx48cUgvwKhdn8rb7ng0-0YpmIy7/pub?output=csv",
   refreshMinutes: 5,
+  centreLabel: "Knowledge base",
 };
 
 // SAMPLE DATA, shown until CONFIG.sheetCsvUrl is set and loads.
@@ -311,18 +314,36 @@ function parseCSV(text) {
   return rows;
 }
 
-// Column headers are matched by name (any order, any case); extra columns are ignored.
+// Column headers are matched by name, in any order and any case; extra columns are ignored.
+// Each field takes the first header that equals one of its `is` names, else one containing a `has` word.
 const COLUMNS = {
-  id: ["id"], title: ["title", "name", "headline"], topic: ["topic", "category"], type: ["type"],
-  status: ["status"], summary: ["summary", "description", "details"], tags: ["tags", "keywords"],
-  related: ["related", "related items", "links"], link: ["link", "url", "article", "outline link"],
+  id: { is: ["id"] },
+  title: { is: ["title", "name", "headline"] },
+  topic: { is: ["top tag", "topic", "category", "branch"], has: ["topic", "category"] },
+  type: { is: ["type", "type of entry"], has: ["type"] },
+  status: { is: ["status"] },
+  summary: { is: ["summary", "description", "details"], has: ["description", "summary"] },
+  article: { is: ["article", "body"], has: ["article"] },
+  tags: { is: ["tags", "keywords"] },
+  related: { is: ["related", "related items", "links"] },
+  link: { is: ["link", "url", "outline link"] },
+  contributors: { is: ["contributors", "contributor", "added by", "author"], has: ["contributor"] },
+  image: { is: ["image", "photo"], has: ["image"] },
 };
+// Words in the Type column that map to each kind of entry.
+const TYPE_WORDS = { issue: ["issue", "problem"], learning: ["learning", "lesson", "insight", "finding"], explainer: ["explainer", "educational", "education", "background"] };
 const splitList = s => s.split(/[,;]/).map(x => x.trim()).filter(Boolean);
 
 function rowsToTopics(rows) {
   const head = (rows.shift() || []).map(h => h.trim().toLowerCase());
-  const col = {};
-  for (const k in COLUMNS) col[k] = head.findIndex(h => COLUMNS[k].includes(h));
+  const col = {}, used = new Set();
+  for (const k in COLUMNS) {
+    const { is = [], has = [] } = COLUMNS[k];
+    let i = head.findIndex((h, j) => !used.has(j) && is.includes(h));
+    if (i < 0) i = head.findIndex((h, j) => !used.has(j) && has.some(w => h.includes(w)));
+    col[k] = i;
+    if (i >= 0) used.add(i);
+  }
   if (col.title < 0) throw new Error('The sheet needs a "Title" column');
   const get = (r, k) => col[k] >= 0 ? (r[col[k]] || "").trim() : "";
   const topics = new Map(), items = [], seen = new Set();
@@ -331,13 +352,14 @@ function rowsToTopics(rows) {
     if (!title) return;
     const topicName = get(r, "topic") || "Uncategorised";
     if (!topics.has(topicName)) topics.set(topicName, { id: "topic-" + topics.size, name: topicName, items: [] });
-    let type = get(r, "type").toLowerCase();
-    if (!TYPE_NAME[type]) type = "learning";
+    const rawType = get(r, "type").toLowerCase();
+    const type = Object.keys(TYPE_WORDS).find(k => TYPE_WORDS[k].some(w => rawType.includes(w))) || "learning";
     const status = type === "issue" ? (get(r, "status").toLowerCase() === "resolved" ? "resolved" : "open") : undefined;
     let id = get(r, "id") || "row" + (i + 2);
     if (seen.has(id.toLowerCase())) id += "-" + (i + 2);
     seen.add(id.toLowerCase());
-    const it = { id, title, type, status, summary: get(r, "summary"), tags: splitList(get(r, "tags")), rawRelated: splitList(get(r, "related")), link: get(r, "link"), links: [] };
+    const it = { id, title, type, status, summary: get(r, "summary"), tags: splitList(get(r, "tags")), rawRelated: splitList(get(r, "related")), link: get(r, "link"),
+      article: get(r, "article"), contributors: get(r, "contributors"), image: get(r, "image"), links: [] };
     topics.get(topicName).items.push(it); items.push(it);
   });
   const byKey = new Map();
@@ -375,7 +397,7 @@ const TYPE_NAME = { issue: "Issue", learning: "Learning", explainer: "Explainer"
 const state = { q: "", selected: null, collapsed: new Set(), filters: { issue: true, learning: true, explainer: true, open: true, resolved: true } };
 const DUR = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350;
 const ROW = 30, TOPIC_GAP = 150, LEAF_GAP = 42, LABEL_MAX = 46;
-const ROOT_LABEL = "Vehicle-to-Grid trial";
+const ROOT_LABEL = CONFIG.centreLabel;
 const ROOT_FONT = '700 18px "Bricolage Grotesque", system-ui, sans-serif';
 const TOPIC_FONT = '700 14px "Bricolage Grotesque", system-ui, sans-serif';
 const ITEM_FONT = '400 13px "Atkinson Hyperlegible", system-ui, sans-serif';
@@ -392,7 +414,7 @@ function matchSet() {
   if (!words.length) return null;
   const m = new Set();
   ITEMS.forEach(it => {
-    const hay = [it.title, it.summary, it.tags.join(" "), it.topic.name, TYPE_NAME[it.type], it.status || ""].join(" ").toLowerCase();
+    const hay = [it.title, it.summary, it.article || "", it.contributors || "", it.tags.join(" "), it.topic.name, TYPE_NAME[it.type], it.status || ""].join(" ").toLowerCase();
     if (passes(it) && words.every(w => hay.includes(w))) m.add(it.id);
   });
   return m;
@@ -500,7 +522,7 @@ function classes(d) {
 }
 
 function ariaLabel(d) {
-  if (d.kind === "root") return "Vehicle-to-Grid trial. Open or close all topics.";
+  if (d.kind === "root") return ROOT_LABEL + ". Open or close all topics.";
   if (d.kind === "topic") return `${d.label}, ${d.count} items, ${d.open ? "open" : "closed"}`;
   const it = d.item;
   return `${TYPE_NAME[it.type]}${it.status ? ", " + it.status : ""}: ${it.title}`;
@@ -609,19 +631,22 @@ function renderPanel() {
   if (it) {
     const related = it.links.map(id => ITEMS.get(id)).filter(Boolean);
     p.innerHTML = `${backLink}
-      <p class="crumb">Vehicle-to-Grid &rsaquo; ${esc(it.topic.name)}</p>
+      <p class="crumb">${esc(ROOT_LABEL)} &rsaquo; ${esc(it.topic.name)}</p>
       <h2>${esc(it.title)}</h2>
       <div class="pills"><span class="pill ${it.type}">${TYPE_NAME[it.type]}</span>${it.status ? `<span class="pill ${it.status}">${it.status === "open" ? "Open" : "Resolved"}</span>` : ""}</div>
-      <p>${esc(it.summary)}</p>
-      <h3>Tags</h3>
-      <div class="tags">${it.tags.map(t => `<button class="tag" data-tag="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      ${/^https?:\/\//.test(it.image || "") ? `<img class="photo" src="${esc(it.image)}" alt="">` : ""}
+      ${it.summary ? `<p>${esc(it.summary)}</p>` : ""}
+      ${it.article ? `<h3>Article</h3><div class="article">${esc(it.article)}</div>` : ""}
+      ${it.contributors ? `<p class="crumb">Added by ${esc(it.contributors)}</p>` : ""}
+      ${it.tags.length ? `<h3>Tags</h3>
+      <div class="tags">${it.tags.map(t => `<button class="tag" data-tag="${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
       ${related.length ? `<h3>Related</h3><ul class="list">${related.map(r => itemRow(r, subLine(r) + " · " + r.topic.name)).join("")}</ul>` : ""}
       ${it.link ? `<a class="outline-btn" href="${esc(it.link)}" target="_blank" rel="noopener">Open full article</a>`
         : `<button class="outline-btn" disabled>Open full article</button><p class="note">Add a Link column to the sheet to connect articles.</p>`}`;
   } else if (topic) {
     const items = topic.items.filter(passes);
     p.innerHTML = `${backLink}
-      <p class="crumb">Vehicle-to-Grid</p>
+      <p class="crumb">${esc(ROOT_LABEL)}</p>
       <h2>${esc(topic.name)}</h2>
       <p>${items.length} item${items.length === 1 ? "" : "s"} shown. Click the topic on the map again to ${state.collapsed.has(topic.id) ? "open" : "close"} it.</p>
       <ul class="list">${items.map(i => itemRow(i, subLine(i))).join("")}</ul>`;
@@ -634,9 +659,9 @@ function renderPanel() {
   } else {
     const all = [...ITEMS.values()];
     const n = f => all.filter(f).length;
-    p.innerHTML = `<p class="crumb">${live ? "V2G trial" : "Sample data"}</p>
+    p.innerHTML = `<p class="crumb">${live ? "Live" : "Sample data"}</p>
       <h2>What the V2G trial has taught us</h2>
-      ${live ? `<p>Built from the team's V2G spreadsheet. It refreshes every ${CONFIG.refreshMinutes} minutes, so new rows appear on their own.</p>`
+      ${live ? `<p>Built from the team's spreadsheet. It refreshes every ${CONFIG.refreshMinutes} minutes, so new rows appear on their own.</p>`
         : `<p>This map is showing <b>sample issues</b>. Once the team's spreadsheet is connected, it shows the real trial findings and refreshes every ${CONFIG.refreshMinutes} minutes.</p>`}
       <div class="stats">
         <div class="stat"><b>${n(i => i.status === "open")}</b><span>Open issues</span></div>

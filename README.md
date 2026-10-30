@@ -27,17 +27,22 @@ Anyone with the published link can read the published tab, so keep private house
 
 Headers are matched by name, in any order and any case. Extra columns are ignored.
 
-| Column | Required | Notes |
+| Column | Also recognised as | Notes |
 |---|---|---|
-| Title | Yes | Rows without a title are skipped |
-| Topic | No | Becomes a branch of the map. Blank goes under "Uncategorised" |
-| Type | No | Issue, Learning or Explainer. Blank or unknown counts as Learning |
-| Status | No | Open or Resolved, for issues only. Blank counts as Open |
-| Summary | No | Shown in the side panel |
-| Tags | No | Comma-separated, searchable and clickable |
-| Related | No | IDs or exact titles of other rows, comma-separated |
-| ID | No | Short code that Related can point to |
-| Link | No | URL of the full article, e.g. in Outline |
+| Title | Name, Headline | Required. Rows without a title are skipped |
+| Top tag | Topic, Category | Becomes a branch of the map. Blank goes under "Uncategorised" |
+| Type of entry | Type | Issue, Learning, or Explainer/Educational. Anything else counts as Learning |
+| Status | | Open or Resolved, for issues only. Blank counts as Open |
+| Description | Summary | Shown in the side panel |
+| Article | Body | Longer text, shown under "Article" in the side panel |
+| Tags | Keywords | Comma-separated, searchable and clickable |
+| Contributors | Added by, Author | Shown as "Added by" |
+| Image | Photo | A web link to an image (pictures pasted into cells don't come through) |
+| Related | Links | IDs or exact titles of other rows, comma-separated |
+| ID | | Short code that Related can point to |
+| Link | URL | URL of the full article, e.g. in Outline |
+
+Headers only need to contain the key word, so "Description long form text" counts as Description.
 
 ## Editing the map
 
